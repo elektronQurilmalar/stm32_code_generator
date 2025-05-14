@@ -1,5 +1,3 @@
-# --- MODIFIED FILE modules/rcc_config_widget.py ---
-
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QCheckBox, QLabel,
                              QGroupBox, QComboBox, QLineEdit)
 from PyQt5.QtCore import pyqtSignal
@@ -121,7 +119,7 @@ class RCCConfigWidget(QWidget):
         self.current_target_device = target_device_name
         self.current_mcu_family = target_family_name
 
-        target_devices_map = CURRENT_MCU_DEFINES.get('TARGET_DEVICES', {})  # Should be generic key now
+        target_devices_map = CURRENT_MCU_DEFINES.get('TARGET_DEVICES', {})
         device_info = target_devices_map.get(self.current_target_device, {})
 
         # --- Set HSE Default ---
@@ -129,9 +127,8 @@ class RCCConfigWidget(QWidget):
         self.hse_value_lineedit.setText(str(CURRENT_MCU_DEFINES.get('HSE_DEFAULT_HZ', 8000000)))
         self.hse_value_lineedit.blockSignals(False)
 
-        # --- Set Target SYSCLK default (for F2/F4 auto-calc guidance) ---
-        # For F1, this field is less critical as user sets PLL factors, but can be a reference
-        max_sysclk_val = device_info.get("max_sysclk_hz", 72000000)  # Generic default
+        # --- Set Target SYSCLK default ---
+        max_sysclk_val = 72000000  # Generic fallback before family specific
         if self.current_mcu_family == "STM32F4":
             max_sysclk_map_dev = CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_MAP', {}).get(target_device_name, {})
             if "VOS1_od" in max_sysclk_map_dev:
@@ -140,6 +137,13 @@ class RCCConfigWidget(QWidget):
                 max_sysclk_val = max_sysclk_map_dev["VOS1_old"]
             elif "VOS1" in max_sysclk_map_dev:
                 max_sysclk_val = max_sysclk_map_dev["VOS1"]
+            else:
+                max_sysclk_val = device_info.get("max_sysclk_hz", 168000000)  # Fallback for F4
+        elif self.current_mcu_family == "STM32F2":
+            max_sysclk_val = device_info.get("max_sysclk_hz", CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_F2', 120000000))
+        elif self.current_mcu_family == "STM32F1":
+            max_sysclk_val = device_info.get("max_sysclk_hz", CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_F103', 72000000))
+
         self.target_sysclk_lineedit.blockSignals(True)
         self.target_sysclk_lineedit.setText(str(int(max_sysclk_val)))
         self.target_sysclk_lineedit.blockSignals(False)
@@ -181,15 +185,15 @@ class RCCConfigWidget(QWidget):
 
         self.label_pllq.setVisible(not is_f1);
         self.pllq_lineedit.setVisible(not is_f1)
-        # self.pllq_lineedit.setReadOnly(is_f1) # Q is user-set for F2/F4, non-existent for F1
         if not is_f1 and (is_initial_call or family_changed):
-            self.pllq_lineedit.setText("7")
+            self.pllq_lineedit.setText("7")  # Default Q for F2/F4
         elif is_f1:
-            self.pllq_lineedit.setText("")
+            self.pllq_lineedit.setText("")  # Q not applicable for F1
 
         # --- Prescaler Combos ---
-        ahb_map_key = f'AHB_PRESCALER_MAP_{self.current_mcu_family}'
-        apb_map_key = f'APB_PRESCALER_MAP_{self.current_mcu_family}'
+        ahb_map_key = f'AHB_PRESCALER_MAP_{self.current_mcu_family}' if self.current_mcu_family == "STM32F1" else 'AHB_PRESCALER_MAP'
+        apb_map_key = f'APB_PRESCALER_MAP_{self.current_mcu_family}' if self.current_mcu_family == "STM32F1" else 'APB_PRESCALER_MAP'
+
         ahb_map = CURRENT_MCU_DEFINES.get(ahb_map_key, CURRENT_MCU_DEFINES.get('AHB_PRESCALER_MAP', {}))
         apb_map = CURRENT_MCU_DEFINES.get(apb_map_key, CURRENT_MCU_DEFINES.get('APB_PRESCALER_MAP', {}))
 
@@ -228,7 +232,6 @@ class RCCConfigWidget(QWidget):
             self.emit_config_update_slot()
 
     def _sync_sysclk_source_and_pll_checkbox(self):
-        # ... (same as before)
         if self._is_initializing or self._is_auto_calculating_pll: return
 
         pll_checked = self.pll_enable_for_sysclk_checkbox.isChecked()
@@ -247,14 +250,12 @@ class RCCConfigWidget(QWidget):
             self.sysclk_source_combo.blockSignals(False)
 
     def on_critical_param_changed(self, _=None):
-        # ... (same as before, calls _try_auto_calculate_pll and emit)
         if self._is_initializing or self._is_auto_calculating_pll: return
         self._update_ui_element_visibility()
         self._try_auto_calculate_pll()
         self.emit_config_update_slot()
 
     def on_pll_enable_changed(self, _=None):
-        # ... (same as before)
         if self._is_initializing or self._is_auto_calculating_pll: return
         self._sync_sysclk_source_and_pll_checkbox()
         self._update_ui_element_visibility()
@@ -262,7 +263,6 @@ class RCCConfigWidget(QWidget):
         self.emit_config_update_slot()
 
     def on_sysclk_source_changed(self, source_text):
-        # ... (same as before)
         if self._is_initializing or self._is_auto_calculating_pll: return
 
         is_pll_source = (source_text == "PLL")
@@ -277,7 +277,6 @@ class RCCConfigWidget(QWidget):
         self.emit_config_update_slot()
 
     def _update_ui_element_visibility(self):
-        # ... (same as before, but consider F1 target_sysclk_lineedit readOnly state)
         if self._is_initializing: return
         hse_on = self.hse_checkbox.isChecked()
         self.label_hse_value.setVisible(hse_on)
@@ -289,7 +288,7 @@ class RCCConfigWidget(QWidget):
 
         self.label_target_sysclk.setVisible(use_pll_for_sysclk_ui)
         self.target_sysclk_lineedit.setVisible(use_pll_for_sysclk_ui)
-        self.target_sysclk_lineedit.setReadOnly(is_f1)  # F1 target is for reference
+        self.target_sysclk_lineedit.setReadOnly(is_f1)
 
         self.auto_calc_status_label.setVisible(use_pll_for_sysclk_ui)
         self.label_pll_source.setVisible(use_pll_for_sysclk_ui)
@@ -307,39 +306,38 @@ class RCCConfigWidget(QWidget):
         self.pllp_lineedit.setVisible(use_pll_for_sysclk_ui and not is_f1)
         self.label_pllq.setVisible(use_pll_for_sysclk_ui and not is_f1)
         self.pllq_lineedit.setVisible(use_pll_for_sysclk_ui and not is_f1)
-        self.pllq_lineedit.setReadOnly(is_f1)  # User input for F2/F4
+        # self.pllq_lineedit.setReadOnly(is_f1) # Q line edit is not applicable for F1 (hidden)
 
     def _try_auto_calculate_pll(self):
-        # ... (same as before, but _calculate_f1_pll will use user inputs from lineedits)
         if self._is_initializing or self._is_auto_calculating_pll: return
         self._is_auto_calculating_pll = True
 
         try:
             if not self.pll_enable_for_sysclk_checkbox.isChecked():
-                self.pllp_lineedit.setText("")  # Clear F2/F4 calculated P
-                # For F1, M and N are user inputs, don't clear them if PLL is disabled,
-                # but status should reflect PLL is off.
+                self.pllp_lineedit.setText("")
                 self.auto_calc_status_label.setText("PLL for SYSCLK is disabled.")
                 self.auto_calc_status_label.setStyleSheet("color: black;")
                 self._is_auto_calculating_pll = False
                 return
 
-            # Target SYSCLK is primarily for F2/F4 auto-calculation
-            # For F1, it's more of a reference, as user provides factors
             target_sysclk_for_calc = 0
             try:
                 target_sysclk_for_calc = int(self.target_sysclk_lineedit.text())
             except ValueError:
-                if self.current_mcu_family != "STM32F1":  # Only critical for F2/F4 auto-calc
+                if self.current_mcu_family != "STM32F1":
                     self.auto_calc_status_label.setText("Invalid Target SYSCLK value for PLL calculation.");
                     self.auto_calc_status_label.setStyleSheet("color: red;")
                     self._is_auto_calculating_pll = False
                     return
-                # For F1, proceed even if target_sysclk_lineedit is invalid, as factors are manual
 
             pll_input_freq = 0
             pll_source_type = self.pll_source_combo.currentText()
-            hsi_val = CURRENT_MCU_DEFINES.get('HSI_VALUE_HZ', 8000000)
+            hsi_val = CURRENT_MCU_DEFINES.get('HSI_VALUE_HZ', 8000000)  # F1 HSI is typically 8MHz, F2/F4 16MHz
+            if self.current_mcu_family == "STM32F1":
+                hsi_val = CURRENT_MCU_DEFINES.get('HSI_VALUE_HZ', 8000000)
+            else:
+                hsi_val = CURRENT_MCU_DEFINES.get('HSI_VALUE_HZ', 16000000)
+
             hse_val_str = self.hse_value_lineedit.text()
             hse_val = int(hse_val_str) if hse_val_str.isdigit() else CURRENT_MCU_DEFINES.get('HSE_DEFAULT_HZ', 8000000)
 
@@ -364,9 +362,9 @@ class RCCConfigWidget(QWidget):
                 "PLL input freq invalid or zero."); self._is_auto_calculating_pll = False; return
 
             if self.current_mcu_family == "STM32F1":
-                self._calculate_f1_pll(pll_input_freq, target_sysclk_for_calc)  # target is for reference/check
+                self._calculate_f1_pll(pll_input_freq, target_sysclk_for_calc)
             elif self.current_mcu_family in ["STM32F2", "STM32F4"]:
-                if target_sysclk_for_calc <= 0:  # Must have valid target for F2/F4
+                if target_sysclk_for_calc <= 0:
                     self.auto_calc_status_label.setText("Target SYSCLK for PLL calc must be > 0.");
                     self.auto_calc_status_label.setStyleSheet("color: red;");
                 else:
@@ -377,94 +375,92 @@ class RCCConfigWidget(QWidget):
             self._is_auto_calculating_pll = False
 
     def _calculate_f1_pll(self, pll_input_freq, target_sysclk_reference):
-        # For F1, user provides PLLXTPRE and PLLMUL. This function verifies them.
         try:
             xtpre_str = self.pllm_or_xtpre_lineedit.text()
             mul_str = self.plln_or_mul_lineedit.text()
 
             if not xtpre_str.isdigit() or not mul_str.isdigit():
                 self.auto_calc_status_label.setText("PLLXTPRE/PLLMUL must be numbers.");
-                self.auto_calc_status_label.setStyleSheet("color: red;")
+                self.auto_calc_status_label.setStyleSheet("color: red;");
                 return
-
-            xtpre_val = int(xtpre_str)
+            xtpre_val = int(xtpre_str);
             mul_val = int(mul_str)
 
             valid_xtpre_options = CURRENT_MCU_DEFINES.get('PLLXTPRE_VALUES', [1, 2])
-            min_mul = CURRENT_MCU_DEFINES.get('PLLMUL_MIN', 2)
+            min_mul = CURRENT_MCU_DEFINES.get('PLLMUL_MIN', 2);
             max_mul = CURRENT_MCU_DEFINES.get('PLLMUL_MAX', 16)
 
-            if xtpre_val not in valid_xtpre_options:
-                self.auto_calc_status_label.setText(f"Invalid PLLXTPRE ({xtpre_val}). Use {valid_xtpre_options}.");
-                self.auto_calc_status_label.setStyleSheet("color: red;")
-                return
-            if not (min_mul <= mul_val <= max_mul):
-                self.auto_calc_status_label.setText(f"Invalid PLLMUL ({mul_val}). Use {min_mul}-{max_mul}.");
-                self.auto_calc_status_label.setStyleSheet("color: red;")
-                return
+            if xtpre_val not in valid_xtpre_options: self.auto_calc_status_label.setText(
+                f"Invalid PLLXTPRE ({xtpre_val}). Use {valid_xtpre_options}."); self.auto_calc_status_label.setStyleSheet(
+                "color: red;"); return
+            if not (min_mul <= mul_val <= max_mul): self.auto_calc_status_label.setText(
+                f"Invalid PLLMUL ({mul_val}). Use {min_mul}-{max_mul}."); self.auto_calc_status_label.setStyleSheet(
+                "color: red;"); return
 
             effective_pll_in = pll_input_freq
-            if self.pll_source_combo.currentText() == "HSE":  # PLLXTPRE applies only to HSE source for PLL
-                if xtpre_val == 0:  # Should not happen due to check above
-                    self.auto_calc_status_label.setText(f"PLLXTPRE cannot be 0 for HSE source.");
-                    return
-                effective_pll_in = pll_input_freq / xtpre_val
-
+            if self.pll_source_combo.currentText() == "HSE": effective_pll_in = pll_input_freq / xtpre_val
             actual_sysclk = effective_pll_in * mul_val
 
             device_info = CURRENT_MCU_DEFINES.get('TARGET_DEVICES', {}).get(self.current_target_device, {})
-            # max_sysclk_for_device is the true limit for the selected F1 device
             max_sysclk_for_device = device_info.get("max_sysclk_hz",
                                                     CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_F103', 72000000))
 
             if actual_sysclk > max_sysclk_for_device:
                 self.auto_calc_status_label.setText(
-                    f"F1 SYSCLK ({actual_sysclk / 1e6:.1f}MHz) > Max ({max_sysclk_for_device / 1e6:.1f}MHz for {self.current_target_device}).")
-                self.auto_calc_status_label.setStyleSheet("color: red;")
-            # For F1, target_sysclk_reference is just for user's info, not strict matching
-            elif target_sysclk_reference > 0 and abs(
-                    actual_sysclk - target_sysclk_reference) > 1000000:  # 1MHz tolerance for reference
+                    f"F1 SYSCLK ({actual_sysclk / 1e6:.1f}MHz) > Max ({max_sysclk_for_device / 1e6:.1f}MHz for {self.current_target_device})."); self.auto_calc_status_label.setStyleSheet(
+                    "color: red;")
+            elif target_sysclk_reference > 0 and abs(actual_sysclk - target_sysclk_reference) > 1000000:
                 self.auto_calc_status_label.setText(
-                    f"F1 SYSCLK: {actual_sysclk / 1e6:.1f}MHz. (Ref Target: {target_sysclk_reference / 1e6:.1f}MHz).")
-                self.auto_calc_status_label.setStyleSheet("color: orange;")  # Warning if far from reference target
+                    f"F1 SYSCLK: {actual_sysclk / 1e6:.1f}MHz. (Ref Target: {target_sysclk_reference / 1e6:.1f}MHz)."); self.auto_calc_status_label.setStyleSheet(
+                    "color: orange;")
             else:
-                self.auto_calc_status_label.setText(f"F1 Calculated SYSCLK: {actual_sysclk / 1e6:.1f} MHz.")
-                self.auto_calc_status_label.setStyleSheet("color: green;")
-        except Exception as e:  # Catch any other conversion errors
-            self.auto_calc_status_label.setText(f"Error in F1 PLL params: {e}")
-            self.auto_calc_status_label.setStyleSheet("color: red;")
+                self.auto_calc_status_label.setText(
+                    f"F1 Calculated SYSCLK: {actual_sysclk / 1e6:.1f} MHz."); self.auto_calc_status_label.setStyleSheet(
+                    "color: green;")
+        except Exception as e:
+            self.auto_calc_status_label.setText(
+                f"Error in F1 PLL params: {e}"); self.auto_calc_status_label.setStyleSheet("color: red;")
 
     def _calculate_f2_f4_pll(self, pll_input_freq, target_sysclk):
-        # ... (This part should be mostly okay, as it attempts to find M,N,P)
-        # Ensure it uses the correct VCO_OUT ranges for F2 vs F4 from defines
         best_solution = None;
         smallest_diff = float('inf')
-
-        pllm_min = CURRENT_MCU_DEFINES.get('PLLM_MIN', 2)
+        pllm_min = CURRENT_MCU_DEFINES.get('PLLM_MIN', 2);
         pllm_max = CURRENT_MCU_DEFINES.get('PLLM_MAX', 63)
         pllp_values = CURRENT_MCU_DEFINES.get('PLLP_VALUES', [2, 4, 6, 8])
-        vco_in_min = CURRENT_MCU_DEFINES.get('VCO_INPUT_MIN_HZ', 1e6)
+        vco_in_min = CURRENT_MCU_DEFINES.get('VCO_INPUT_MIN_HZ', 1e6);
         vco_in_max = CURRENT_MCU_DEFINES.get('VCO_INPUT_MAX_HZ', 2e6)
 
-        vco_out_min_key = f'VCO_OUTPUT_MIN_HZ_{self.current_mcu_family}'  # e.g. VCO_OUTPUT_MIN_HZ_F2
-        vco_out_max_key = f'VCO_OUTPUT_MAX_HZ_{self.current_mcu_family}'  # e.g. VCO_OUTPUT_MAX_HZ_F2
-
-        vco_out_min = CURRENT_MCU_DEFINES.get(vco_out_min_key, CURRENT_MCU_DEFINES.get('VCO_OUTPUT_MIN_HZ', 192e6))
+        vco_out_min_key = f'VCO_OUTPUT_MIN_HZ_{self.current_mcu_family}';
+        vco_out_max_key = f'VCO_OUTPUT_MAX_HZ_{self.current_mcu_family}'
+        vco_out_min = CURRENT_MCU_DEFINES.get(vco_out_min_key, CURRENT_MCU_DEFINES.get('VCO_OUTPUT_MIN_HZ',
+                                                                                       192e6 if self.current_mcu_family == "STM32F2" else 100e6))
         vco_out_max = CURRENT_MCU_DEFINES.get(vco_out_max_key, CURRENT_MCU_DEFINES.get('VCO_OUTPUT_MAX_HZ', 432e6))
 
         get_plln_range_func = CURRENT_MCU_DEFINES.get('get_plln_range')
-
-        plln_min_default_key = f'PLLN_MIN_{self.current_mcu_family}'  # e.g. PLLN_MIN_F2
-        plln_max_default_key = f'PLLN_MAX_{self.current_mcu_family}'  # e.g. PLLN_MAX_F2
-
-        plln_min_default = CURRENT_MCU_DEFINES.get(plln_min_default_key,
-                                                   CURRENT_MCU_DEFINES.get('PLLN_MIN_GENERAL', 192))
+        plln_min_default_key = f'PLLN_MIN_{self.current_mcu_family}';
+        plln_max_default_key = f'PLLN_MAX_{self.current_mcu_family}'
+        plln_min_default = CURRENT_MCU_DEFINES.get(plln_min_default_key, CURRENT_MCU_DEFINES.get('PLLN_MIN_GENERAL',
+                                                                                                 192 if self.current_mcu_family == "STM32F2" else 50))
         plln_max_default = CURRENT_MCU_DEFINES.get(plln_max_default_key,
                                                    CURRENT_MCU_DEFINES.get('PLLN_MAX_GENERAL', 432))
 
         min_plln, max_plln = (plln_min_default, plln_max_default)
-        if get_plln_range_func and self.current_mcu_family == "STM32F4":
-            min_plln, max_plln = get_plln_range_func(self.current_target_device)
+        if get_plln_range_func and self.current_mcu_family == "STM32F4": min_plln, max_plln = get_plln_range_func(
+            self.current_target_device)
+
+        current_max_sysclk_for_device = 0
+        device_info_calc = CURRENT_MCU_DEFINES.get('TARGET_DEVICES', {}).get(self.current_target_device, {})
+
+        if self.current_mcu_family == "STM32F2":
+            current_max_sysclk_for_device = device_info_calc.get('max_sysclk_hz',
+                                                                 CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_F2', 120000000))
+        elif self.current_mcu_family == "STM32F4":
+            vos_map_for_device = CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_MAP', {}).get(self.current_target_device, {})
+            highest_f4_clk_for_device = max(vos_map_for_device.values()) if vos_map_for_device else 0
+            current_max_sysclk_for_device = device_info_calc.get('max_sysclk_hz',
+                                                                 highest_f4_clk_for_device or 168000000)
+        else:
+            current_max_sysclk_for_device = device_info_calc.get('max_sysclk_hz', 120000000)
 
         for pllm_candidate in range(pllm_min, pllm_max + 1):
             if pllm_candidate == 0: continue
@@ -473,76 +469,74 @@ class RCCConfigWidget(QWidget):
 
             for pllp_candidate in pllp_values:
                 plln_float = (target_sysclk * pllp_candidate) / vco_in_candidate
-                for plln_offset in range(-2, 3):
+                for plln_offset in range(-2, 3):  # Check rounded value and neighbors
                     plln_candidate_rounded = round(plln_float) + plln_offset
                     if not (min_plln <= plln_candidate_rounded <= max_plln): continue
 
                     vco_out_candidate = vco_in_candidate * plln_candidate_rounded
                     if not (vco_out_min <= vco_out_candidate <= vco_out_max): continue
-
                     actual_sysclk = vco_out_candidate / pllp_candidate
+                    if actual_sysclk > current_max_sysclk_for_device + 1000: continue  # Allow small overshoot
                     diff = abs(actual_sysclk - target_sysclk)
 
-                    current_max_sysclk_for_device = CURRENT_MCU_DEFINES.get('TARGET_DEVICES', {}).get(
-                        self.current_target_device, {}).get('max_sysclk_hz',
-                                                            SYSCLK_MAX_HZ_F2 if self.current_mcu_family == "STM32F2" else CURRENT_MCU_DEFINES.get(
-                                                                'SYSCLK_MAX_HZ_MAP', {}).get(self.current_target_device,
-                                                                                             {}).get("VOS1_od",
-                                                                                                     168000000))  # complex fallback
-                    if actual_sysclk > current_max_sysclk_for_device + 1000:  # Allow small overshoot due to rounding
-                        continue
-
-                    if diff < smallest_diff:
-                        smallest_diff = diff
-                        best_solution = (pllm_candidate, int(plln_candidate_rounded), pllp_candidate, actual_sysclk)
+                    if diff < smallest_diff: smallest_diff = diff; best_solution = (pllm_candidate,
+                                                                                    int(plln_candidate_rounded),
+                                                                                    pllp_candidate, actual_sysclk)
                     if diff == 0 and actual_sysclk <= current_max_sysclk_for_device: break
                 if best_solution and smallest_diff == 0 and best_solution[3] <= current_max_sysclk_for_device: break
             if best_solution and smallest_diff == 0 and best_solution[3] <= current_max_sysclk_for_device: break
 
         if best_solution:
             m, n, p, actual_f = best_solution
-            self.pllm_or_xtpre_lineedit.setText(str(m))
-            self.plln_or_mul_lineedit.setText(str(n))
+            self.pllm_or_xtpre_lineedit.setText(str(m));
+            self.plln_or_mul_lineedit.setText(str(n));
             self.pllp_lineedit.setText(str(p))
             self.auto_calc_status_label.setText(
-                f"Calc: ~{actual_f / 1e6:.2f}MHz (Target: {target_sysclk / 1e6:.1f}MHz)")
+                f"Calc: ~{actual_f / 1e6:.2f}MHz (Target: {target_sysclk / 1e6:.1f}MHz)");
             self.auto_calc_status_label.setStyleSheet("color: green;")
         else:
             self.pllm_or_xtpre_lineedit.setText("N/A");
             self.plln_or_mul_lineedit.setText("N/A");
             self.pllp_lineedit.setText("N/A")
-            self.auto_calc_status_label.setText(f"Could not find PLL params for {target_sysclk / 1e6:.1f} MHz.")
+            self.auto_calc_status_label.setText(f"Could not find PLL params for {target_sysclk / 1e6:.1f} MHz.");
             self.auto_calc_status_label.setStyleSheet("color: red;")
 
     def _calculate_clocks_and_settings(self, params_in):
-        # ... (this function needs to use the user-provided F1 factors if family is F1)
-        # ... or the calculated F2/F4 factors ...
         params = params_in.copy()
         calculated = {"errors": [], "warnings": []}
         mcu_family = params.get("mcu_family", self.current_mcu_family)
 
         target_devices_map = CURRENT_MCU_DEFINES.get('TARGET_DEVICES', {})
         device_info = target_devices_map.get(params.get("target_device", self.current_target_device), {})
-        max_sysclk_for_device = device_info.get("max_sysclk_hz", 0)
 
-        hsi_val = CURRENT_MCU_DEFINES.get('HSI_VALUE_HZ', 16000000)
+        max_sysclk_for_device = 0
         if mcu_family == "STM32F1":
-            hsi_val = CURRENT_MCU_DEFINES.get('HSI_VALUE_HZ', 8000000)  # F1 uses 8MHz HSI usually
+            max_sysclk_for_device = device_info.get("max_sysclk_hz",
+                                                    CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_F103', 72000000))
+        elif mcu_family == "STM32F2":
+            max_sysclk_for_device = device_info.get("max_sysclk_hz",
+                                                    CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_F2', 120000000))
+        elif mcu_family == "STM32F4":
+            # For F4, determine from VOS map if possible, or device default
+            vos_map_f4 = CURRENT_MCU_DEFINES.get('SYSCLK_MAX_HZ_MAP', {}).get(params.get("target_device"), {})
+            max_sysclk_for_device = device_info.get("max_sysclk_hz",
+                                                    max(vos_map_f4.values()) if vos_map_f4 else 168000000)
 
-        sysclk_freq_hz = float(hsi_val)  # Default to HSI
+        hsi_default = 8000000 if mcu_family == "STM32F1" else 16000000
+        hsi_val = CURRENT_MCU_DEFINES.get('HSI_VALUE_HZ', hsi_default)
 
+        sysclk_freq_hz = float(hsi_val)
         sysclk_source = params.get("sysclk_source", "HSI")
 
         if sysclk_source == "PLL":
             if not params.get("pll_enabled_for_sysclk"):
-                calculated["warnings"].append("PLL SYSCLK selected, but 'Use PLL' is off. Using HSI.")
-                sysclk_source = "HSI";
-                params["sysclk_source"] = "HSI"  # Fallback
+                calculated["warnings"].append(
+                    "PLL SYSCLK selected, but 'Use PLL' is off. Using HSI."); sysclk_source = "HSI"; params[
+                    "sysclk_source"] = "HSI"
             else:
                 pll_source_type = params.get("pll_source", "HSI")
                 pll_input_freq = 0.0
                 hse_val_param = float(params.get("hse_value_hz", CURRENT_MCU_DEFINES.get('HSE_DEFAULT_HZ', 8000000)))
-
                 if pll_source_type == "HSI":
                     if not params.get("hsi_enabled"): calculated["errors"].append("HSI (PLL src) disabled.")
                     pll_input_freq = float(hsi_val)
@@ -552,82 +546,60 @@ class RCCConfigWidget(QWidget):
                 elif pll_source_type == "HSE":
                     if not params.get("hse_enabled"): calculated["errors"].append("HSE (PLL src) disabled.")
                     pll_input_freq = hse_val_param
+                if pll_input_freq <= 0 and not calculated["errors"]: calculated["errors"].append(
+                    "PLL Input Freq is zero or negative.")
 
-                if pll_input_freq <= 0 and not calculated["errors"]:
-                    calculated["errors"].append("PLL Input Freq is zero or negative.")
-
-                if not calculated["errors"]:  # Proceed only if input freq is valid
+                if not calculated["errors"]:
                     if mcu_family == "STM32F1":
-                        pllxtpre = params.get("pllm_or_xtpre", 1)  # User input
-                        pllmul = params.get("plln_or_mul", 9)  # User input
+                        pllxtpre = params.get("pllm_or_xtpre", 1);
+                        pllmul = params.get("plln_or_mul", 9)
                         if pllxtpre == 0: calculated["errors"].append("PLLXTPRE cannot be 0 for F1.")
-
                         effective_pll_in_f1 = pll_input_freq
-                        if pll_source_type == "HSE" and pllxtpre > 0:
-                            effective_pll_in_f1 = pll_input_freq / pllxtpre
-
+                        if pll_source_type == "HSE" and pllxtpre > 0: effective_pll_in_f1 = pll_input_freq / pllxtpre
                         sysclk_freq_hz = effective_pll_in_f1 * pllmul
-                        if sysclk_freq_hz > max_sysclk_for_device:
-                            calculated["errors"].append(
-                                f"F1 SYSCLK ({sysclk_freq_hz / 1e6:.1f}MHz) exceeds max ({max_sysclk_for_device / 1e6:.1f}MHz).")
-
-                        params["pll_p_output_freq_hz"] = sysclk_freq_hz
-                        params["vco_output_freq_hz"] = sysclk_freq_hz
+                        if sysclk_freq_hz > max_sysclk_for_device: calculated["errors"].append(
+                            f"F1 SYSCLK ({sysclk_freq_hz / 1e6:.1f}MHz) exceeds max ({max_sysclk_for_device / 1e6:.1f}MHz).")
+                        params["pll_p_output_freq_hz"] = sysclk_freq_hz;
+                        params["vco_output_freq_hz"] = sysclk_freq_hz;
                         params["vco_input_freq_hz"] = effective_pll_in_f1
-
                     elif mcu_family in ["STM32F2", "STM32F4"]:
-                        # For F2/F4, M, N, P are taken from the calculated/displayed values
-                        # which _try_auto_calculate_pll should have set in the lineedits
-                        # So, we read them back from params (which should reflect the lineedits)
-                        pllm = params.get("pllm_or_xtpre", 0)
-                        plln = params.get("plln_or_mul", 0)
+                        pllm = params.get("pllm_or_xtpre", 0);
+                        plln = params.get("plln_or_mul", 0);
                         pllp = params.get("pllp", 0)
-
                         if not all(isinstance(val, int) and val > 0 for val in [pllm, plln, pllp]):
                             calculated["errors"].append(
-                                f"{mcu_family} PLLM,N,P invalid (likely not calculated). Using HSI.")
-                            sysclk_source = "HSI";
-                            params["sysclk_source"] = "HSI"
+                                f"{mcu_family} PLLM,N,P invalid. Using HSI."); sysclk_source = "HSI"; params[
+                                "sysclk_source"] = "HSI"
                         else:
-                            vco_in = pll_input_freq / pllm
-                            vco_out = vco_in * plln
+                            vco_in = pll_input_freq / pllm;
+                            vco_out = vco_in * plln;
                             sysclk_freq_hz = vco_out / pllp
-                            if sysclk_freq_hz > max_sysclk_for_device:
-                                calculated["errors"].append(
-                                    f"{mcu_family} SYSCLK ({sysclk_freq_hz / 1e6:.1f}MHz) exceeds max ({max_sysclk_for_device / 1e6:.1f}MHz).")
-
-                            params["vco_input_freq_hz"] = vco_in
-                            params["vco_output_freq_hz"] = vco_out
+                            if sysclk_freq_hz > max_sysclk_for_device: calculated["errors"].append(
+                                f"{mcu_family} SYSCLK ({sysclk_freq_hz / 1e6:.1f}MHz) exceeds max ({max_sysclk_for_device / 1e6:.1f}MHz).")
+                            params["vco_input_freq_hz"] = vco_in;
+                            params["vco_output_freq_hz"] = vco_out;
                             params["pll_p_output_freq_hz"] = sysclk_freq_hz
                             pllq_val = params.get("pllq", 0)
-                            if pllq_val > 0:
-                                params["pll_q_output_freq_hz"] = vco_out / pllq_val
+                            if pllq_val > 0: params["pll_q_output_freq_hz"] = vco_out / pllq_val
 
-        # If errors occurred during PLL, fall back to HSI
-        if calculated["errors"] and sysclk_source == "PLL":
-            sysclk_source = "HSI";
-            params["sysclk_source"] = "HSI"
-            sysclk_freq_hz = float(hsi_val)
-            calculated["warnings"].append("Reverted to HSI due to PLL configuration errors.")
+        if calculated["errors"] and sysclk_source == "PLL": sysclk_source = "HSI"; params[
+            "sysclk_source"] = "HSI"; sysclk_freq_hz = float(hsi_val); calculated["warnings"].append(
+            "Reverted to HSI due to PLL configuration errors.")
 
         if sysclk_source == "HSE":
             if not params.get("hse_enabled"):
-                calculated["errors"].append("HSE SYSCLK selected, but disabled. Using HSI.")
-                sysclk_freq_hz = float(hsi_val);
-                params["sysclk_source"] = "HSI"
+                calculated["errors"].append("HSE SYSCLK selected, but disabled. Using HSI."); sysclk_freq_hz = float(
+                    hsi_val); params["sysclk_source"] = "HSI"
             else:
                 sysclk_freq_hz = float(params.get("hse_value_hz", CURRENT_MCU_DEFINES.get('HSE_DEFAULT_HZ', 8000000)))
-
-        if sysclk_source == "HSI":  # Explicit HSI or fallback
+        if sysclk_source == "HSI":
             if not params.get("hsi_enabled"): calculated["warnings"].append(
                 "HSI SYSCLK selected, but HSI not enabled by user.")
             sysclk_freq_hz = float(hsi_val)
 
-        # Ensure sysclk_freq_hz does not exceed absolute max for device if something went wrong
         if sysclk_freq_hz > max_sysclk_for_device and max_sysclk_for_device > 0:
-            if not any("SYSCLK" in err for err in calculated["errors"]):  # Add error if not already present
-                calculated["errors"].append(
-                    f"Final SYSCLK ({sysclk_freq_hz / 1e6:.1f}MHz) capped to max ({max_sysclk_for_device / 1e6:.1f}MHz).")
+            if not any("SYSCLK" in err for err in calculated["errors"]): calculated["errors"].append(
+                f"Final SYSCLK ({sysclk_freq_hz / 1e6:.1f}MHz) capped to max ({max_sysclk_for_device / 1e6:.1f}MHz).")
             sysclk_freq_hz = float(max_sysclk_for_device)
 
         ahb_div = params.get("ahb_div", 1);
@@ -637,31 +609,26 @@ class RCCConfigWidget(QWidget):
         apb2_div = params.get("apb2_div", 1);
         pclk2_freq_hz = hclk_freq_hz / apb2_div
 
-        # Max clock checks (using device_info for specific limits)
-        max_hclk_dev = device_info.get("max_hclk_hz", max_sysclk_for_device)  # HCLK often same as SYSCLK max
-        max_pclk1_dev = device_info.get("max_pclk1_hz", 36000000)
-        max_pclk2_dev = device_info.get("max_pclk2_hz", 72000000)
+        max_hclk_dev = device_info.get("max_hclk_hz", max_sysclk_for_device)
+        max_pclk1_dev = device_info.get("max_pclk1_hz", 36000000 if mcu_family != "STM32F4" else 42000000)
+        max_pclk2_dev = device_info.get("max_pclk2_hz", 72000000 if mcu_family != "STM32F4" else 84000000)
 
         vos_scale_id = "N/A";
         vos_pwr_cr_val = None;
-        overdrive_active = False  # F4 specific
+        overdrive_active = False
 
         if mcu_family == "STM32F4":
             get_required_vos_func = CURRENT_MCU_DEFINES.get('get_required_vos')
             if get_required_vos_func:
                 vos_max_hclk_dev = device_info.get("vos_max_hclk", {})
-                non_od_max_vos1 = vos_max_hclk_dev.get("VOS_SCALE_1", 0)
+                non_od_max_vos1 = vos_max_hclk_dev.get("VOS_SCALE_1", 0) if vos_max_hclk_dev else 0
                 od_intended = device_info.get("has_overdrive") and hclk_freq_hz > non_od_max_vos1
-
                 vos_scale_id, vos_pwr_cr_val = get_required_vos_func(hclk_freq_hz, params.get("target_device"),
                                                                      od_intended)
                 overdrive_active = (vos_scale_id == "VOS_SCALE_1_OD")
-
-                # Update max peripheral clocks based on VOS for F4
-                vos_lookup_key = vos_scale_id.replace("_OD", "")  # Use base VOS scale for map lookup
-                max_hclk_dev = vos_max_hclk_dev.get(vos_lookup_key, max_hclk_dev)
+                vos_lookup_key = vos_scale_id.replace("_OD", "")
+                max_hclk_dev = vos_max_hclk_dev.get(vos_lookup_key, max_hclk_dev) if vos_max_hclk_dev else max_hclk_dev
                 if overdrive_active: max_hclk_dev = device_info.get("max_sysclk_vos1_od", max_hclk_dev)
-
                 max_pclk1_dev = CURRENT_MCU_DEFINES.get('PCLK1_MAX_HZ_MAP', {}).get(params.get("target_device"),
                                                                                     {}).get(vos_lookup_key,
                                                                                             max_pclk1_dev)
@@ -685,7 +652,6 @@ class RCCConfigWidget(QWidget):
             else:
                 flash_latency_val = get_flash_latency_func(hclk_freq_hz, params.get("target_device"))
         else:
-            # Generic fallback if specific function is missing (less ideal)
             flash_latency_val = CURRENT_MCU_DEFINES.get('get_flash_latency', lambda f, d, v=None: 0)(hclk_freq_hz,
                                                                                                      params.get(
                                                                                                          "target_device"),
@@ -698,18 +664,15 @@ class RCCConfigWidget(QWidget):
             "vco_output_freq_hz": int(params.get("vco_output_freq_hz", 0)),
             "pll_p_output_freq_hz": int(params.get("pll_p_output_freq_hz", 0)),
             "pll_q_output_freq_hz": int(params.get("pll_q_output_freq_hz", 0)),
-            "flash_latency_val": flash_latency_val,
-            "vos_scale_id": vos_scale_id, "vos_scale_pwr_cr_val": vos_pwr_cr_val,
-            "overdrive_active": overdrive_active,
-            "ahb_div": ahb_div, "apb1_div": apb1_div, "apb2_div": apb2_div
+            "flash_latency_val": flash_latency_val, "vos_scale_id": vos_scale_id,
+            "vos_scale_pwr_cr_val": vos_pwr_cr_val,
+            "overdrive_active": overdrive_active, "ahb_div": ahb_div, "apb1_div": apb1_div, "apb2_div": apb2_div
         })
         return calculated
 
     def get_config(self):
-        # ... (same as before) ...
-        mcu_fam = self.current_mcu_family
+        mcu_fam = self.current_mcu_family;
         mcu_dev = self.current_target_device
-
         params = {
             "target_device": mcu_dev, "mcu_family": mcu_fam,
             "hsi_enabled": self.hsi_checkbox.isChecked(),
@@ -733,11 +696,11 @@ class RCCConfigWidget(QWidget):
             "apb1_div": int(self.apb1_div_combo.currentText()) if self.apb1_div_combo.currentText().isdigit() else 1,
             "apb2_div": int(self.apb2_div_combo.currentText()) if self.apb2_div_combo.currentText().isdigit() else 1,
         }
-        params["pll_enabled"] = params["pll_enabled_for_sysclk"]
+        params["pll_enabled"] = params[
+            "pll_enabled_for_sysclk"]  # Keep pll_enabled for backward compatibility if used elsewhere
         calculated_data = self._calculate_clocks_and_settings(params)
         return {"params": params, "calculated": calculated_data}
 
     def emit_config_update_slot(self, _=None):
-        # ... (same as before) ...
         if self._is_initializing or self._is_auto_calculating_pll: return
         self.config_updated.emit(self.get_config())

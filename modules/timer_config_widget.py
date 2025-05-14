@@ -220,7 +220,6 @@ class TimerConfigWidget(QWidget):
         adv_specific_form = QFormLayout(self.adv_specific_group)
         self.main_output_enable_checkbox = QCheckBox("Main Output Enable (MOE)")
         adv_specific_form.addRow(self.main_output_enable_checkbox)
-        # TODO: Add other BDTR fields like OSSR, OSSI, Dead Time, etc.
         self.params_layout.addWidget(self.adv_specific_group)
 
         self._connect_signals()
@@ -384,7 +383,6 @@ class TimerConfigWidget(QWidget):
             etr_modes_key = f"TIM_ETR_MODES_{self.current_mcu_family}"
             etr_modes = CURRENT_MCU_DEFINES.get(etr_modes_key, CURRENT_MCU_DEFINES.get("TIM_ETR_MODES", {}))
             clk_src_list.extend(etr_modes.keys())
-            # TODO: Add TIxFPx options if slave controller is implemented
         current_cs = self.clock_source_combo.currentText()
         self.clock_source_combo.blockSignals(True);
         self.clock_source_combo.clear()

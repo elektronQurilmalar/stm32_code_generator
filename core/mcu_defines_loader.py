@@ -1,6 +1,3 @@
-# --- MODIFIED FILE core/mcu_defines_loader.py ---
-# This is a conceptual loader. In a real app, this might be more dynamic.
-
 # Dictionaries to hold defines from each family file
 F1_DEFINES = {}
 F2_DEFINES = {}
@@ -21,8 +18,6 @@ def _populate_defines_dict(module, family_name_short):
 
     if family_specific_target_key in defines_dict:
         # If family-specific key exists, copy its value to the generic 'TARGET_DEVICES'
-        # and remove the family-specific one to avoid confusion, or keep both if preferred.
-        # For simplicity, we'll ensure 'TARGET_DEVICES' is always present.
         defines_dict['TARGET_DEVICES'] = defines_dict[family_specific_target_key]
         # Optionally remove the specific key if you want only one source of truth:
         # del defines_dict[family_specific_target_key]
@@ -30,8 +25,14 @@ def _populate_defines_dict(module, family_name_short):
         # If neither generic nor specific key exists, create an empty TARGET_DEVICES
         # This might happen if a new defines file is added without this structure.
         print(
-            f"Warning: Neither 'TARGET_DEVICES' nor '{family_specific_target_key}' found for STM32{family_name_short}.")
+            f"Warning: Neither 'TARGET_DEVICES' nor '{family_specific_target_key}' found for STM32{family_name_short}. Creating empty 'TARGET_DEVICES'.")
         defines_dict['TARGET_DEVICES'] = {}
+
+    # Ensure family-specific function like get_fX_flash_latency is available under generic name if needed
+    # This can be handled by generators looking for f"get_{mcu_family.lower()}_flash_latency"
+    # Or by adding aliases here:
+    # if hasattr(module, f"get_{family_name_short.lower()}_flash_latency"):
+    #     defines_dict["get_flash_latency"] = getattr(module, f"get_{family_name_short.lower()}_flash_latency")
 
     return defines_dict
 
@@ -65,7 +66,6 @@ def load_defines(family_name):
         if not F4_DEFINES:
             try:
                 from . import stm32f4_defines
-                # F4 already uses TARGET_DEVICES, but let's use the helper for consistency
                 F4_DEFINES.update(_populate_defines_dict(stm32f4_defines, "F4"))
             except ImportError as e:
                 print(f"Error: Could not load stm32f4_defines.py: {e}")

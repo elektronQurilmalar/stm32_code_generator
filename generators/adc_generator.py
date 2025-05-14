@@ -124,7 +124,6 @@ def generate_adc_code_cmsis(
             ccr_val |= (prescaler_val << ADC_CCR_ADCPRE_Pos)
             if params.get("common_vbat_enabled"): ccr_val |= (1 << ADC_CCR_VBATE_Pos)
             if params.get("common_tsens_enabled"): ccr_val |= (1 << ADC_CCR_TSVREFE_Pos)
-            # TODO: MULTI, DMA, DDS, DELAY for F2/F4
             source_function += f"    ADC->CCR = 0x{ccr_val:08X}UL;\n\n"
     else:  # STM32F1: Prescaler is in RCC_CFGR, no VBATE/TSVREFE in CCR.
         source_function += f"    // For STM32F1, ADC prescaler is in RCC->CFGR (ADCPRE bits).\n"
